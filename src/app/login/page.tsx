@@ -55,11 +55,11 @@ export default function LoginPage() {
             <Shield className="w-5 h-5 text-indigo-400" />
           </div>
           <span className="text-2xl font-bold tracking-tight text-slate-900">
-            Brightloop <span className="text-indigo-600 font-medium">Loopbook</span>
+            Brightloop <span className="text-indigo-600 font-semibold">Billing</span>
           </span>
         </div>
-        <h2 className="mt-4 text-center text-sm font-medium text-slate-600">
-          Subscription Management & Finance Cockpit
+        <h2 className="mt-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Enterprise Subscription & Revenue Platform
         </h2>
       </div>
 
@@ -109,7 +109,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full mt-2 py-2.5 px-4 border border-transparent rounded-lg shadow-xs text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 transition-colors disabled:opacity-50"
             >
-              {loading ? 'Authenticating...' : 'Sign In to Loopbook'}
+              {loading ? 'Authenticating...' : 'Sign In to Brightloop Billing'}
             </button>
           </form>
 

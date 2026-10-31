@@ -28,6 +28,12 @@ import { VirtualClockBanner } from '@/components/ui/VirtualClockBanner';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { StateStepper } from '@/components/ui/StateStepper';
 import { ExplainPriceModal } from '@/components/ui/ExplainPriceModal';
+import { InvoiceSheetModal } from '@/components/ui/InvoiceSheetModal';
+import {
+  CreateSubscriptionModal,
+  CreateProductModal,
+  CreateDiscountModal,
+} from '@/components/ui/CreateModals';
 import { formatINR } from '@/lib/currency';
 
 export default function DashboardApp() {
@@ -56,8 +62,18 @@ export default function DashboardApp() {
   const [plans, setPlans] = useState<any[]>([]);
   const [discounts, setDiscounts] = useState<any[]>([]);
   const [staffUsers, setStaffUsers] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
 
   // Modals & Actions
+  const [createSubModalOpen, setCreateSubModalOpen] = useState(false);
+  const [createProdModalOpen, setCreateProdModalOpen] = useState(false);
+  const [createDiscModalOpen, setCreateDiscModalOpen] = useState(false);
+  const [invoiceSheetModal, setInvoiceSheetModal] = useState<{ isOpen: boolean; invoice: any }>({
+    isOpen: false,
+    invoice: null,
+  });
+
   const [explainModal, setExplainModal] = useState<{ isOpen: boolean; description: string; explain: any }>({
     isOpen: false,
     description: '',
@@ -160,6 +176,19 @@ export default function DashboardApp() {
       if (stRes.ok) {
         const stData = await stRes.json();
         setStaffUsers(stData.staff || []);
+      }
+
+      // 10. Customers & Templates
+      const cRes = await fetch('/api/customers');
+      if (cRes.ok) {
+        const cData = await cRes.json();
+        setCustomers(cData.customers || []);
+      }
+
+      const tRes = await fetch('/api/quotation-templates');
+      if (tRes.ok) {
+        const tData = await tRes.json();
+        setTemplates(tData.templates || []);
       }
     } catch (e) {
       console.error(e);
@@ -327,7 +356,7 @@ export default function DashboardApp() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50/70 flex flex-col font-sans">
       {/* 1. Virtual Clock Interactive Banner */}
       <VirtualClockBanner onTimeAdvanced={loadAllData} />
 
@@ -336,11 +365,11 @@ export default function DashboardApp() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs">
-              <Shield className="w-5 h-5 text-indigo-400" />
+              <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
               <span className="text-base font-bold tracking-tight text-slate-900">
-                Brightloop <span className="text-indigo-600 font-semibold">Loopbook</span>
+                Brightloop <span className="text-slate-900 font-bold">Billing</span>
               </span>
               <span className="ml-2 text-[11px] font-semibold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
                 {user?.role || 'Staff'} View
@@ -348,22 +377,80 @@ export default function DashboardApp() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Instant Role Switcher */}
+            <div className="hidden lg:flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs">
+              {user?.role === 'admin' ? (
+                <button
+                  onClick={async () => {
+                    await fetch('/api/auth/demo-switch', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ role: 'staff' }),
+                    });
+                    loadAllData();
+                    showToast('Switched to Staff view');
+                    setUser((prev: any) => ({ ...prev, role: 'staff', name: 'Rahul (Billing Ops)' }));
+                  }}
+                  className="px-2 py-1 rounded text-slate-600 hover:text-slate-900 font-medium transition-colors"
+                >
+                  Switch to Staff
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    await fetch('/api/auth/demo-switch', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ role: 'admin' }),
+                    });
+                    loadAllData();
+                    showToast('Switched to Admin view');
+                    setUser((prev: any) => ({ ...prev, role: 'admin', name: 'Admin User' }));
+                  }}
+                  className="px-2 py-1 rounded text-slate-600 hover:text-slate-900 font-medium transition-colors"
+                >
+                  Switch to Admin
+                </button>
+              )}
+              <span className="text-slate-300">|</span>
+              <button
+                onClick={async () => {
+                  await fetch('/api/auth/demo-switch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role: 'customer' }),
+                  });
+                  router.push('/portal');
+                }}
+                className="px-2 py-1 rounded text-emerald-700 hover:bg-emerald-50 font-medium transition-colors"
+              >
+                Customer Portal
+              </button>
+            </div>
+
+            <button
+              onClick={() => setCreateSubModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Sub
+            </button>
             <button
               onClick={() => handleTriggerBilling(true)}
               disabled={actionLoading}
               className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
             >
-              <Eye className="w-3.5 h-3.5 text-indigo-600" />
+              <Eye className="w-3.5 h-3.5 text-slate-700" />
               Billing Dry Run
             </button>
             <button
               onClick={() => handleTriggerBilling(false)}
               disabled={actionLoading}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
             >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              Run Billing For Real
+              <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+              Run Billing Real
             </button>
             <div className="h-5 w-px bg-slate-200 mx-1"></div>
             <span className="text-xs font-medium text-slate-600 hidden md:inline">
@@ -399,11 +486,11 @@ export default function DashboardApp() {
                 onClick={() => setActiveTab(tab.key as any)}
                 className={`flex items-center gap-2 py-3 px-3.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'border-indigo-600 text-indigo-600 bg-indigo-50/30'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    ? 'border-slate-900 text-slate-900 bg-slate-100/70'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+                <Icon className={`w-4 h-4 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} />
                 {tab.label}
               </button>
             );
@@ -447,7 +534,7 @@ export default function DashboardApp() {
                   Monthly Recurring Revenue (MRR)
                 </span>
                 <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-indigo-700 font-mono tabular-nums">
+                  <span className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
                     {metrics ? formatINR(BigInt(metrics.mrr)) : '₹0.00'}
                   </span>
                 </div>
@@ -528,7 +615,7 @@ export default function DashboardApp() {
                     MRR Movement Waterfall
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Computed from append-only <code className="font-mono text-indigo-600">mrr_events</code>
+                    Computed from append-only <code className="font-mono text-slate-800 bg-slate-100 px-1 py-0.5 rounded">mrr_events</code>
                   </p>
                 </div>
                 <span className="text-xs text-slate-400 font-mono">Current Month</span>
@@ -547,9 +634,9 @@ export default function DashboardApp() {
                     +{waterfall ? formatINR(BigInt(waterfall.newMrr)) : '₹0.00'}
                   </span>
                 </div>
-                <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                  <span className="text-[10px] text-indigo-700 uppercase font-semibold block">+ Expansion</span>
-                  <span className="font-mono font-bold text-indigo-700 text-sm">
+                <div className="p-3 bg-slate-100 rounded-lg border border-slate-200">
+                  <span className="text-[10px] text-slate-700 uppercase font-semibold block">+ Expansion</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm">
                     +{waterfall ? formatINR(BigInt(waterfall.expansionMrr)) : '₹0.00'}
                   </span>
                 </div>
@@ -617,6 +704,13 @@ export default function DashboardApp() {
                   </button>
                 ))}
               </div>
+              <button
+                onClick={() => setCreateSubModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New Subscription
+              </button>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
@@ -675,7 +769,7 @@ export default function DashboardApp() {
                           {sub.status === 'quotation' && (
                             <button
                               onClick={() => handleTransition(sub.id, 'confirmed')}
-                              className="px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-[11px]"
+                              className="px-2 py-1 rounded bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200 font-semibold text-[11px]"
                             >
                               Confirm
                             </button>
@@ -704,7 +798,7 @@ export default function DashboardApp() {
                           {sub.status === 'closed' && (
                             <button
                               onClick={() => handleRenew(sub.id)}
-                              className="px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 font-semibold text-[11px]"
+                              className="px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 font-semibold text-[11px]"
                             >
                               Renew Link
                             </button>
@@ -793,12 +887,31 @@ export default function DashboardApp() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
+                          {/* Tax Invoice Sheet Button */}
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/invoices/${inv.id}`);
+                                const data = await res.json();
+                                if (res.ok) {
+                                  setInvoiceSheetModal({ isOpen: true, invoice: data.invoice });
+                                }
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            }}
+                            className="px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[11px] inline-flex items-center gap-1 shadow-2xs"
+                          >
+                            <FileText className="w-3 h-3 text-slate-700" />
+                            Tax Invoice
+                          </button>
+
                           {/* "Why this amount?" Button */}
                           <button
                             onClick={() => handleOpenWhyThisAmount(inv.id)}
-                            className="px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-[11px] inline-flex items-center gap-1"
+                            className="px-2 py-1 rounded bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200 font-semibold text-[11px] inline-flex items-center gap-1"
                           >
-                            <HelpCircle className="w-3 h-3" />
+                            <HelpCircle className="w-3 h-3 text-slate-700" />
                             Why this amount?
                           </button>
 
@@ -923,7 +1036,7 @@ export default function DashboardApp() {
                       <button
                         onClick={() => handleRenew(r.id)}
                         disabled={!r.allowRenew}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs disabled:opacity-40"
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-xs disabled:opacity-40"
                       >
                         1-Click Renew
                       </button>
@@ -939,16 +1052,27 @@ export default function DashboardApp() {
         {activeTab === 'catalog' && (
           <div className="space-y-6">
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
-              <h3 className="font-bold text-slate-900 text-sm mb-3">
-                Products & Variants (PRD Base 1,000 + Brand: Odoo +560 = 1,560)
-              </h3>
+              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Products & Variants (PRD Base 1,000 + Brand: Odoo +560 = 1,560)
+                  </h3>
+                  <p className="text-xs text-slate-500">Configure catalog seats, recurring addons, and variant pricing.</p>
+                </div>
+                <button
+                  onClick={() => setCreateProdModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Product
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {products.map((p) => (
                   <div key={p.id} className="p-4 rounded-lg border border-slate-200 bg-slate-50/50">
                     <div className="flex items-start justify-between">
                       <div>
                         <h4 className="font-bold text-slate-900 text-xs">{p.name}</h4>
-                        <span className="text-[10px] uppercase font-semibold text-indigo-600 block mt-0.5">{p.type}</span>
+                        <span className="text-[10px] uppercase font-semibold text-slate-600 block mt-0.5">{p.type}</span>
                       </div>
                       <span className="font-mono font-bold text-slate-900 text-sm">
                         {formatINR(BigInt(p.salesPrice))}
@@ -980,7 +1104,7 @@ export default function DashboardApp() {
                 {plans.map((pl) => (
                   <div key={pl.id} className="p-4 rounded-lg border border-slate-200 bg-slate-50/50">
                     <h4 className="font-bold text-slate-900 text-xs">{pl.name}</h4>
-                    <span className="font-mono font-bold text-indigo-700 text-sm block mt-1">
+                    <span className="font-mono font-bold text-slate-900 text-sm block mt-1">
                       {formatINR(BigInt(pl.price))} / {pl.billingPeriod}
                     </span>
                     <div className="mt-3 pt-2 border-t border-slate-200 space-y-1 text-[11px]">
@@ -1027,6 +1151,12 @@ export default function DashboardApp() {
                     Automatic evaluation at invoice generation; stops at limit or expiry.
                   </p>
                 </div>
+                <button
+                  onClick={() => setCreateDiscModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Discount
+                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1160,6 +1290,46 @@ export default function DashboardApp() {
           </div>
         </div>
       )}
+      {/* Create Subscription Modal */}
+      <CreateSubscriptionModal
+        isOpen={createSubModalOpen}
+        onClose={() => setCreateSubModalOpen(false)}
+        onSuccess={() => {
+          showToast('Subscription created successfully');
+          loadAllData();
+        }}
+        customers={customers}
+        plans={plans}
+        products={products}
+        templates={templates}
+      />
+
+      {/* Create Product Modal */}
+      <CreateProductModal
+        isOpen={createProdModalOpen}
+        onClose={() => setCreateProdModalOpen(false)}
+        onSuccess={() => {
+          showToast('Product added to catalog');
+          loadAllData();
+        }}
+      />
+
+      {/* Create Discount Modal */}
+      <CreateDiscountModal
+        isOpen={createDiscModalOpen}
+        onClose={() => setCreateDiscModalOpen(false)}
+        onSuccess={() => {
+          showToast('Discount coupon created');
+          loadAllData();
+        }}
+      />
+
+      {/* GST Tax Invoice Sheet Modal */}
+      <InvoiceSheetModal
+        isOpen={invoiceSheetModal.isOpen}
+        onClose={() => setInvoiceSheetModal({ isOpen: false, invoice: null })}
+        invoice={invoiceSheetModal.invoice}
+      />
     </div>
   );
 }

@@ -75,10 +75,10 @@ export default function SignupPage() {
             <Shield className="w-5 h-5 text-indigo-400" />
           </div>
           <span className="text-2xl font-bold tracking-tight text-slate-900">
-            Brightloop <span className="text-indigo-600 font-medium">Loopbook</span>
+            Brightloop <span className="text-indigo-600 font-semibold">Billing</span>
           </span>
         </div>
-        <h2 className="mt-4 text-center text-sm font-medium text-slate-600">
+        <h2 className="mt-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
           Create Customer Account & Billing Entity
         </h2>
       </div>

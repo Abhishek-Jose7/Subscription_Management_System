@@ -76,22 +76,22 @@ export function VirtualClockBanner({ onTimeAdvanced }: { onTimeAdvanced?: () => 
   return (
     <div className={`w-full px-4 py-2 text-xs flex flex-wrap items-center justify-between border-b transition-colors ${
       clock.isSimulated
-        ? 'bg-amber-500/15 border-amber-300 text-amber-900 font-medium'
-        : 'bg-slate-900 text-slate-200 border-slate-800'
+        ? 'bg-amber-50/90 border-amber-200 text-amber-900 font-medium'
+        : 'bg-white text-slate-800 border-slate-200 shadow-2xs'
     }`}>
       <div className="flex items-center gap-2">
         {clock.isSimulated ? (
-          <span className="flex items-center gap-1.5 font-semibold text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded">
-            <AlertTriangle className="w-3.5 h-3.5" />
+          <span className="flex items-center gap-1.5 font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
             SIMULATED TIME ACTIVE
           </span>
         ) : (
-          <span className="flex items-center gap-1.5 text-slate-400">
-            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="flex items-center gap-1.5 text-slate-500 font-medium">
+            <Calendar className="w-3.5 h-3.5 text-slate-700" />
             System Clock:
           </span>
         )}
-        <span className="font-mono text-sm font-bold tracking-tight">
+        <span className="font-mono text-xs font-bold text-slate-900">
           {dateStr}
         </span>
         {clock.offsetDays !== 0 && (
