@@ -1,0 +1,639 @@
+// Loopbook - Brightloop Subscription Management System
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// IDENTITY & ACCESS
+// ==========================================
+
+enum UserRole {
+  admin
+  staff
+  customer
+}
+
+model User {
+  id              String    @id @default(uuid())
+  emailNorm       String    @unique @map("email_norm")
+  passwordHash    String    @map("password_hash")
+  role            UserRole  @default(customer)
+  name            String
+  isActive        Boolean   @default(true) @map("is_active")
+  failedAttempts  Int       @default(0) @map("failed_attempts")
+  lockedUntil     DateTime? @map("locked_until")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  customer        Customer?
+  passwordTokens  PasswordToken[]
+  sessions        Session[]
+  auditLogs       AuditLog[]      @relation("ActorAuditLogs")
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+enum TokenPurpose {
+  reset
+  invite
+}
+
+model PasswordToken {
+  id        String       @id @default(uuid())
+  userId    String       @map("user_id")
+  tokenHash String       @map("token_hash")
+  purpose   TokenPurpose
+  expiresAt DateTime     @map("expires_at")
+  usedAt    DateTime?    @map("used_at")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@index([tokenHash])
+  @@map("password_tokens")
+}
+
+model Customer {
+  id             String   @id @default(uuid())
+  userId         String?  @unique @map("user_id")
+  name           String
+  company        String?
+  billingAddress String?  @map("billing_address")
+  state          String?
+  taxId          String?  @map("tax_id")
+  phone          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user           User?    @relation(fields: [userId], references: [id])
+  subscriptions  Subscription[]
+  invoices       Invoice[]
+
+  @@map("customers")
+}
+
+// ==========================================
+// CATALOG
+// ==========================================
+
+enum ProductType {
+  software
+  addon
+  service
+  physical
+}
+
+model Product {
+  id         String      @id @default(uuid())
+  name       String
+  type       ProductType
+  salesPrice BigInt      @map("sales_price")  // minor units (paise)
+  costPrice  BigInt      @map("cost_price")   // minor units (paise)
+  notes      String?
+  isActive   Boolean     @default(true) @map("is_active")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  productTaxes      ProductTax[]
+  productAttributes ProductAttribute[]
+  subscriptionLines SubscriptionLine[]
+  invoiceLines      InvoiceLine[]
+  discountProducts  DiscountProduct[]
+  planDefaultLines  PlanDefaultLine[]
+  templateLines     QuotationTemplateLine[]
+
+  @@map("products")
+}
+
+model ProductTax {
+  productId String @map("product_id")
+  taxId     String @map("tax_id")
+
+  product   Product @relation(fields: [productId], references: [id])
+  tax       Tax     @relation(fields: [taxId], references: [id])
+
+  @@id([productId, taxId])
+  @@map("product_taxes")
+}
+
+model Attribute {
+  id     String @id @default(uuid())
+  name   String
+
+  values           AttributeValue[]
+  productAttributes ProductAttribute[]
+
+  @@map("attributes")
+}
+
+model AttributeValue {
+  id          String @id @default(uuid())
+  attributeId String @map("attribute_id")
+  label       String
+  extraPrice  BigInt @map("extra_price")  // minor units (paise), can be negative
+
+  attribute   Attribute @relation(fields: [attributeId], references: [id])
+
+  @@map("attribute_values")
+}
+
+model ProductAttribute {
+  productId   String @map("product_id")
+  attributeId String @map("attribute_id")
+
+  product   Product   @relation(fields: [productId], references: [id])
+  attribute Attribute @relation(fields: [attributeId], references: [id])
+
+  @@id([productId, attributeId])
+  @@map("product_attributes")
+}
+
+enum TaxType {
+  percent
+  fixed
+}
+
+enum GstComponent {
+  cgst
+  sgst
+  igst
+}
+
+model Tax {
+  id            String        @id @default(uuid())
+  name          String
+  rateBp        Int           @map("rate_bp")  // basis points (1800 = 18%)
+  type          TaxType
+  priceIncluded Boolean       @default(false) @map("price_included")
+  scope         String        @default("all")  // "all" or product category
+  gstComponent  GstComponent? @map("gst_component")
+  isActive      Boolean       @default(true) @map("is_active")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  productTaxes  ProductTax[]
+
+  @@map("taxes")
+}
+
+enum BillingPeriod {
+  daily
+  weekly
+  monthly
+  yearly
+}
+
+model Plan {
+  id              String        @id @default(uuid())
+  name            String
+  price           BigInt                          // minor units (paise)
+  billingPeriod   BillingPeriod @map("billing_period")
+  minQuantity     Int           @default(1) @map("min_quantity")
+  availableFrom   DateTime?     @map("available_from")
+  availableTo     DateTime?     @map("available_to")
+  autoCloseOnEnd  Boolean       @default(false) @map("auto_close_on_end")
+  allowEarlyClose Boolean       @default(false) @map("allow_early_close")
+  allowPause      Boolean       @default(false) @map("allow_pause")
+  allowRenew      Boolean       @default(true) @map("allow_renew")
+  isActive        Boolean       @default(true) @map("is_active")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  defaultLines    PlanDefaultLine[]
+  subscriptions   Subscription[]
+  templates       QuotationTemplate[]
+
+  @@map("plans")
+}
+
+model PlanDefaultLine {
+  id        String @id @default(uuid())
+  planId    String @map("plan_id")
+  productId String @map("product_id")
+  variantJson String? @map("variant_json")  // JSON of selected variant values
+  qty       Int    @default(1)
+
+  plan    Plan    @relation(fields: [planId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("plan_default_lines")
+}
+
+model PaymentTerm {
+  id   String @id @default(uuid())
+  name String
+  days Int
+
+  subscriptions Subscription[]
+
+  @@map("payment_terms")
+}
+
+model QuotationTemplate {
+  id           String @id @default(uuid())
+  name         String
+  validityDays Int    @map("validity_days")
+  planId       String @map("plan_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  plan  Plan @relation(fields: [planId], references: [id])
+  lines QuotationTemplateLine[]
+  subscriptions Subscription[]
+
+  @@map("quotation_templates")
+}
+
+model QuotationTemplateLine {
+  id         String @id @default(uuid())
+  templateId String @map("template_id")
+  productId  String @map("product_id")
+  variantJson String? @map("variant_json")
+  qty        Int    @default(1)
+
+  template QuotationTemplate @relation(fields: [templateId], references: [id])
+  product  Product           @relation(fields: [productId], references: [id])
+
+  @@map("quotation_template_lines")
+}
+
+// ==========================================
+// SUBSCRIPTIONS
+// ==========================================
+
+enum SubscriptionStatus {
+  draft
+  quotation
+  confirmed
+  active
+  closed
+}
+
+model Subscription {
+  id                 String             @id @default(uuid())
+  number             String             @unique
+  customerId         String             @map("customer_id")
+  planId             String             @map("plan_id")
+  status             SubscriptionStatus @default(draft)
+  startDate          DateTime           @map("start_date") @db.Date
+  expiryDate         DateTime?          @map("expiry_date") @db.Date
+  paymentTermId      String?            @map("payment_term_id")
+  billingAnchorDay   Int                @map("billing_anchor_day")
+  nextInvoiceDate    DateTime?          @map("next_invoice_date") @db.Date
+  autoRenew          Boolean            @default(false) @map("auto_renew")
+  pausedFrom         DateTime?          @map("paused_from") @db.Date
+  pausedUntil        DateTime?          @map("paused_until") @db.Date
+  closeAtPeriodEnd   Boolean            @default(false) @map("close_at_period_end")
+  closeReason        String?            @map("close_reason")
+  renewedFromId      String?            @map("renewed_from_id")
+  templateId         String?            @map("template_id")
+  quotationExpiresAt DateTime?          @map("quotation_expires_at") @db.Date
+  notes              String?
+  createdBy          String?            @map("created_by")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  customer    Customer          @relation(fields: [customerId], references: [id])
+  plan        Plan              @relation(fields: [planId], references: [id])
+  paymentTerm PaymentTerm?      @relation(fields: [paymentTermId], references: [id])
+  renewedFrom Subscription?     @relation("RenewalChain", fields: [renewedFromId], references: [id])
+  renewals    Subscription[]    @relation("RenewalChain")
+  template    QuotationTemplate? @relation(fields: [templateId], references: [id])
+  lines       SubscriptionLine[]
+  events      SubscriptionEvent[]
+  mrrEvents   MrrEvent[]
+  invoices    Invoice[]
+
+  @@index([status, nextInvoiceDate])
+  @@index([customerId])
+  @@map("subscriptions")
+}
+
+model SubscriptionLine {
+  id              String  @id @default(uuid())
+  subscriptionId  String  @map("subscription_id")
+  productId       String  @map("product_id")
+  variantJson     String? @map("variant_json")
+  quantity        Int
+  unitPrice       BigInt  @map("unit_price")  // snapshot, paise
+  taxSnapshotJson String? @map("tax_snapshot_json")
+  discountId      String? @map("discount_id")
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  product      Product      @relation(fields: [productId], references: [id])
+  discount     Discount?    @relation(fields: [discountId], references: [id])
+
+  @@map("subscription_lines")
+}
+
+model SubscriptionEvent {
+  id             String   @id @default(uuid())
+  subscriptionId String   @map("subscription_id")
+  type           String                         // e.g. "created", "sent", "confirmed", "activated", "paused", "closed", "renewed"
+  fromStatus     String?  @map("from_status")
+  toStatus       String?  @map("to_status")
+  actor          String?                        // user id or "system"
+  reason         String?
+  payloadJson    String?  @map("payload_json")
+  at             DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId, at])
+  @@map("subscription_events")
+}
+
+enum MrrEventType {
+  new_sub          @map("new")
+  expansion
+  contraction
+  churn
+  reactivation
+}
+
+model MrrEvent {
+  id             String       @id @default(uuid())
+  subscriptionId String       @map("subscription_id")
+  type           MrrEventType
+  deltaMrr       BigInt       @map("delta_mrr")  // paise
+  at             DateTime     @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([at])
+  @@map("mrr_events")
+}
+
+// ==========================================
+// DISCOUNTS
+// ==========================================
+
+enum DiscountType {
+  fixed
+  percent
+}
+
+enum DiscountScope {
+  products
+  subscription
+}
+
+model Discount {
+  id                String        @id @default(uuid())
+  name              String
+  type              DiscountType
+  value             BigInt                          // paise for fixed, basis points for percent
+  minPurchaseAmount BigInt        @default(0) @map("min_purchase_amount")
+  minQuantity       Int           @default(0) @map("min_quantity")
+  startDate         DateTime      @map("start_date") @db.Date
+  endDate           DateTime      @map("end_date") @db.Date
+  usageLimit        Int           @map("usage_limit")
+  usedCount         Int           @default(0) @map("used_count")
+  scope             DiscountScope
+  stackable         Boolean       @default(false)
+  isActive          Boolean       @default(true) @map("is_active")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  discountProducts  DiscountProduct[]
+  redemptions       DiscountRedemption[]
+  subscriptionLines SubscriptionLine[]
+
+  @@map("discounts")
+}
+
+model DiscountProduct {
+  discountId String @map("discount_id")
+  productId  String @map("product_id")
+
+  discount Discount @relation(fields: [discountId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@id([discountId, productId])
+  @@map("discount_products")
+}
+
+model DiscountRedemption {
+  id         String    @id @default(uuid())
+  discountId String    @map("discount_id")
+  invoiceId  String    @map("invoice_id")
+  amount     BigInt                          // paise
+  createdAt  DateTime  @default(now()) @map("created_at")
+  reversedAt DateTime? @map("reversed_at")
+
+  discount Discount @relation(fields: [discountId], references: [id])
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@map("discount_redemptions")
+}
+
+// ==========================================
+// BILLING & MONEY
+// ==========================================
+
+model BillingRun {
+  id           String   @id @default(uuid())
+  startedAt    DateTime @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  businessDate DateTime @map("business_date") @db.Date
+  dryRun       Boolean  @default(false) @map("dry_run")
+  triggeredBy  String   @map("triggered_by")
+  createdCount Int      @default(0) @map("created_count")
+  skippedJson  String?  @map("skipped_json")
+  failedJson   String?  @map("failed_json")
+
+  invoices Invoice[]
+
+  @@map("billing_runs")
+}
+
+enum InvoiceType {
+  recurring
+  adjustment
+}
+
+enum InvoiceStatus {
+  draft
+  confirmed
+  paid
+  cancelled
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  number          String?       @unique           // assigned at confirmation
+  subscriptionId  String        @map("subscription_id")
+  customerId      String        @map("customer_id")
+  invoiceType     InvoiceType   @default(recurring) @map("invoice_type")
+  status          InvoiceStatus @default(draft)
+  invoiceDate     DateTime      @map("invoice_date") @db.Date
+  dueDate         DateTime      @map("due_date") @db.Date
+  periodStart     DateTime      @map("period_start") @db.Date
+  periodEnd       DateTime      @map("period_end") @db.Date
+  subtotal        BigInt        @default(0)       // paise
+  discountTotal   BigInt        @default(0) @map("discount_total")
+  taxTotal        BigInt        @default(0) @map("tax_total")
+  total           BigInt        @default(0)       // paise
+  amountPaid      BigInt        @default(0) @map("amount_paid")
+  currency        String        @default("INR")
+  sentAt          DateTime?     @map("sent_at")
+  createdBy       String?       @map("created_by")
+  billingRunId    String?       @map("billing_run_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  subscription Subscription     @relation(fields: [subscriptionId], references: [id])
+  customer     Customer         @relation(fields: [customerId], references: [id])
+  billingRun   BillingRun?      @relation(fields: [billingRunId], references: [id])
+  lines        InvoiceLine[]
+  payments     Payment[]
+  redemptions  DiscountRedemption[]
+
+  @@index([status, dueDate])
+  @@index([customerId, invoiceDate])
+  @@index([subscriptionId])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             String  @id @default(uuid())
+  invoiceId      String  @map("invoice_id")
+  productId      String? @map("product_id")
+  description    String
+  quantity       Int
+  unitPrice      BigInt  @map("unit_price")    // paise
+  discountAmount BigInt  @default(0) @map("discount_amount")
+  taxAmount      BigInt  @default(0) @map("tax_amount")
+  amount         BigInt                        // paise (final after discount + tax)
+  explainJson    String? @map("explain_json")  // price waterfall
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@map("invoice_lines")
+}
+
+enum PaymentMethod {
+  cash
+  bank_transfer
+  upi
+  card
+  cheque
+  other
+}
+
+enum PaymentStatus {
+  recorded
+  voided
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  invoiceId      String        @map("invoice_id")
+  method         PaymentMethod
+  amount         BigInt                          // paise
+  paymentDate    DateTime      @map("payment_date") @db.Date
+  reference      String?
+  note           String?
+  status         PaymentStatus @default(recorded)
+  idempotencyKey String        @unique @map("idempotency_key")
+  recordedBy     String?       @map("recorded_by")
+  voidedAt       DateTime?     @map("voided_at")
+  voidReason     String?       @map("void_reason")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+model NumberSequence {
+  prefix    String
+  year      Int
+  lastValue Int    @default(0) @map("last_value")
+
+  @@id([prefix, year])
+  @@map("number_sequences")
+}
+
+// ==========================================
+// PLATFORM
+// ==========================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?  @map("actor_id")
+  action    String
+  entity    String
+  entityId  String   @map("entity_id")
+  before    String?  // JSON
+  after     String?  // JSON
+  requestId String?  @map("request_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("ActorAuditLogs", fields: [actorId], references: [id])
+
+  @@index([entity, entityId, createdAt(sort: Desc)])
+  @@map("audit_log")
+}
+
+model NotificationOutbox {
+  id        String   @id @default(uuid())
+  type      String                         // welcome, password_reset, invoice_sent, etc.
+  to        String
+  payload   String                         // JSON
+  dedupeKey String   @unique @map("dedupe_key")
+  status    String   @default("pending")   // pending, sent, failed
+  attempts  Int      @default(0)
+  lastError String?  @map("last_error")
+  createdAt DateTime @default(now()) @map("created_at")
+  sentAt    DateTime? @map("sent_at")
+
+  @@map("notification_outbox")
+}
+
+model SystemClock {
+  id         String    @id @default("singleton")
+  pinnedDate DateTime? @map("pinned_date") @db.Date
+  offsetDays Int       @default(0) @map("offset_days")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@map("system_clock")
+}
+
+model DailyMetric {
+  date          DateTime @id @db.Date
+  activeSubs    Int      @default(0) @map("active_subs")
+  mrr           BigInt   @default(0)           // paise
+  invoiced      BigInt   @default(0)           // paise
+  collected     BigInt   @default(0)           // paise
+  outstanding   BigInt   @default(0)           // paise
+  overdueAmount BigInt   @default(0) @map("overdue_amount")
+  overdueCount  Int      @default(0) @map("overdue_count")
+
+  @@map("daily_metrics")
+}
+
+model Setting {
+  key   String @id
+  value String
+
+  @@map("settings")
+}
